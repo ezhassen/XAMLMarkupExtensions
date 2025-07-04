@@ -1,7 +1,7 @@
 ﻿#region Copyright information
 // <copyright file="NullExtension.cs">
 //     Licensed under Microsoft Public License (Ms-PL)
-//     http://xamlmarkupextensions.codeplex.com/license
+//     https://github.com/XAMLMarkupExtensions/XAMLMarkupExtensions/blob/master/LICENSE
 // </copyright>
 // <author>Uwe Mayer</author>
 #endregion
@@ -23,12 +23,7 @@ namespace XAMLMarkupExtensions.Base
             return null;
         }
 
-        /// <summary>
-        /// This method must return true, if an update shall be executed when the given endpoint is reached.
-        /// This method is called each time an endpoint is reached.
-        /// </summary>
-        /// <param name="endpoint">Information on the specific endpoint.</param>
-        /// <returns>True, if an update of the path to this endpoint shall be performed.</returns>
+        /// <inheritdoc/>
         protected override bool UpdateOnEndpoint(TargetInfo endpoint)
         {
             return false;

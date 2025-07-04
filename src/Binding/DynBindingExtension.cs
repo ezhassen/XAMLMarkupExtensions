@@ -1,7 +1,7 @@
 ﻿#region Copyright information
 // <copyright file="DynBindingExtension.cs">
 //     Licensed under Microsoft Public License (Ms-PL)
-//     http://xamlmarkupextensions.codeplex.com/license
+//     https://github.com/XAMLMarkupExtensions/XAMLMarkupExtensions/blob/master/LICENSE
 // </copyright>
 // <author>Uwe Mayer</author>
 #endregion
@@ -118,11 +118,7 @@ namespace XAMLMarkupExtensions.Binding
             this.path = path;
         }
 
-        /// <summary>
-        /// This function returns the properly prepared output of the markup extension.
-        /// </summary>
-        /// <param name="info">Information about the target.</param>
-        /// <param name="endPoint">Information about the endpoint.</param>
+        /// <inheritdoc/>
         public override object FormatOutput(TargetInfo endPoint, TargetInfo info)
         {
             //if (!info.IsDependencyObject)
@@ -137,10 +133,10 @@ namespace XAMLMarkupExtensions.Binding
 
             if ((src == null) || ((src is string) && (".".CompareTo(src) == 0)))
             {
-                if (obj is FrameworkElement)
-                    src = ((FrameworkElement)obj).DataContext;
-                else if (obj is FrameworkContentElement)
-                    src = ((FrameworkContentElement)obj).DataContext;
+                if (obj is FrameworkElement fe)
+                    src = fe.DataContext;
+                else if (obj is FrameworkContentElement fce)
+                    src = fce.DataContext;
 
                 if (src == null)
                     return null;
@@ -156,7 +152,7 @@ namespace XAMLMarkupExtensions.Binding
             binding.Converter = converter;
             binding.ConverterParameter = converterParameter;
 
-            object ret = null;
+            object ret;
 
             if (info.IsDependencyObject)
                 ret = binding.ProvideValue(new SimpleProvideValueServiceProvider(endPoint.TargetObject, endPoint.TargetProperty, endPoint.TargetPropertyType, endPoint.TargetPropertyIndex));
@@ -171,12 +167,7 @@ namespace XAMLMarkupExtensions.Binding
             return ret;
         }
 
-        /// <summary>
-        /// This method must return true, if an update shall be executed when the given endpoint is reached.
-        /// This method is called each time an endpoint is reached.
-        /// </summary>
-        /// <param name="endpoint">Information on the specific endpoint.</param>
-        /// <returns>True, if an update of the path to this endpoint shall be performed.</returns>
+        /// <inheritdoc/>
         protected override bool UpdateOnEndpoint(TargetInfo endpoint)
         {
             return true;

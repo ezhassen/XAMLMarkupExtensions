@@ -1,7 +1,7 @@
 ﻿#region Copyright information
 // <copyright file="NestedMarkupExtension.cs">
 //     Licensed under Microsoft Public License (Ms-PL)
-//     http://xamlmarkupextensions.codeplex.com/license
+//     https://github.com/XAMLMarkupExtensions/XAMLMarkupExtensions/blob/master/LICENSE
 // </copyright>
 // <author>Uwe Mayer</author>
 #endregion
@@ -15,11 +15,10 @@ namespace XAMLMarkupExtensions.Base
     using System.Linq;
     using System.Reflection;
     using System.Windows;
+    using System.Windows.Data;
     using System.Windows.Markup;
-#if !NET35
     using System.Windows.Controls;
     using System.Xaml;
-#endif
     #endregion
 
     /// <summary>
@@ -27,15 +26,13 @@ namespace XAMLMarkupExtensions.Base
     /// Based on <see href="https://github.com/SeriousM/WPFLocalizationExtension"/>
     /// </summary>
     [MarkupExtensionReturnType(typeof(object))]
-    public abstract class NestedMarkupExtension : MarkupExtension, INestedMarkupExtension, IDisposable
+    public abstract class NestedMarkupExtension : MarkupExtension, INestedMarkupExtension, IDisposable, IObjectDependency
     {
         /// <summary>
-        /// Holds the collection of assigned dependency objects as WeakReferences
+        /// Holds the collection of assigned dependency objects
         /// Instead of a single reference, a list is used, if this extension is applied to multiple instances.
-        ///
-        /// The values are lists of tuples, containing the target property and property type.
         /// </summary>
-        private readonly Dictionary<WeakReference, Dictionary<Tuple<object, int>, Type>> targetObjects = new Dictionary<WeakReference, Dictionary<Tuple<object, int>, Type>>();
+        private readonly TargetObjectsList targetObjects = new TargetObjectsList();
 
         /// <summary>
         /// Holds the markup extensions root object hash code.
@@ -48,20 +45,10 @@ namespace XAMLMarkupExtensions.Base
         /// <returns>A list of target objects.</returns>
         private List<TargetInfo> GetTargetObjectsAndProperties()
         {
-            List<TargetInfo> list = new List<TargetInfo>();
+            var result = targetObjects.GetTargetInfos().ToList();
+            targetObjects.ClearDeadReferences();
 
-            // Select all targets that are still alive.
-            foreach (var target in targetObjects)
-            {
-                var targetReference = target.Key.Target;
-                if (targetReference == null)
-                    continue;
-
-                list.AddRange(from kvp in target.Value
-                              select new TargetInfo(targetReference, kvp.Key.Item1, kvp.Value, kvp.Key.Item2));
-            }
-
-            return list;
+            return result;
         }
 
         /// <summary>
@@ -98,7 +85,30 @@ namespace XAMLMarkupExtensions.Base
         /// <summary>
         /// An action that is called when the first target is bound.
         /// </summary>
+        [Obsolete("Override 'OnFirstTargetAdded' method instead")]
         protected Action OnFirstTarget;
+
+        /// <summary>
+        /// An action that is called when the first target is bound.
+        /// </summary>
+        protected virtual void OnFirstTargetAdded()
+        {
+#pragma warning disable CS0618
+            OnFirstTarget?.Invoke();
+#pragma warning restore CS0618
+        }
+
+        /// <summary>
+        /// An action that is called when the last target is unbound.
+        /// </summary>
+        /// <remarks>
+        /// This method can be called without <see cref="OnFirstTargetAdded" /> before
+        /// if extension disposed without adding targets.
+        /// </remarks>
+        protected virtual void OnLastTargetRemoved()
+        {
+            EndpointReachedEvent.RemoveListener(rootObjectHashCode, this);
+        }
 
         /// <summary>
         /// This function must be implemented by all child classes.
@@ -115,16 +125,7 @@ namespace XAMLMarkupExtensions.Base
         /// <returns>True, if a connection exits.</returns>
         public bool IsConnected(TargetInfo info)
         {
-            WeakReference wr = (from kvp in targetObjects
-                                where kvp.Key.Target == info.TargetObject
-                                select kvp.Key).FirstOrDefault();
-
-            if (wr == null)
-                return false;
-
-            Tuple<object, int> tuple = new Tuple<object, int>(info.TargetProperty, info.TargetPropertyIndex);
-
-            return targetObjects[wr].ContainsKey(tuple);
+            return targetObjects.IsConnected(info);
         }
 
         /// <summary>
@@ -154,9 +155,6 @@ namespace XAMLMarkupExtensions.Base
             if (!(serviceProvider.GetService(typeof(IProvideValueTarget)) is IProvideValueTarget service))
                 return this;
 
-#if NET35
-            rootObjectHashCode = 0;
-#else
             // Try to cast the passed serviceProvider to a IRootObjectProvider and if the cast fails return null
             if (!(serviceProvider.GetService(typeof(IRootObjectProvider)) is IRootObjectProvider rootObject))
             {
@@ -164,28 +162,34 @@ namespace XAMLMarkupExtensions.Base
             }
             else
             {
-                rootObjectHashCode = rootObject.RootObject.GetHashCode();
-
-                // We only sign up once to the Window Closed event to clear the listeners list of root object.
-                if (rootObject.RootObject != null && !EndpointReachedEvent.ContainsRootObjectHash(rootObjectHashCode))
+                if (rootObject.RootObject == null)
                 {
-                    if (rootObject.RootObject is Window window)
-                    {
-                        window.Closed += delegate (object sender, EventArgs args) { EndpointReachedEvent.ClearListenersForRootObject(rootObjectHashCode); };
-                    }
-                    else if (rootObject.RootObject is FrameworkElement frameworkElement)
-                    {
-                        void frameworkElementUnloadedHandler(object sender, RoutedEventArgs args)
-                        {
-                            frameworkElement.Unloaded -= frameworkElementUnloadedHandler;
-                            EndpointReachedEvent.ClearListenersForRootObject(rootObjectHashCode);
-                        }
+                    rootObjectHashCode = 0;
+                }
+                else
+                {
+                    rootObjectHashCode = rootObject.RootObject.GetHashCode();
 
-                        frameworkElement.Unloaded += frameworkElementUnloadedHandler;
+                    // We only sign up once to the Window Closed event to clear the listeners list of root object.
+                    if (!EndpointReachedEvent.ContainsRootObjectHash(rootObjectHashCode))
+                    {
+                        if (rootObject.RootObject is Window window)
+                        {
+                            window.Closed += delegate (object sender, EventArgs args) { EndpointReachedEvent.ClearListenersForRootObject(rootObjectHashCode); };
+                        }
+                        else if (rootObject.RootObject is FrameworkElement frameworkElement)
+                        {
+                            void frameworkElementUnloadedHandler(object sender, RoutedEventArgs args)
+                            {
+                                frameworkElement.Unloaded -= frameworkElementUnloadedHandler;
+                                EndpointReachedEvent.ClearListenersForRootObject(rootObjectHashCode);
+                            }
+
+                            frameworkElement.Unloaded += frameworkElementUnloadedHandler;
+                        }
                     }
                 }
             }
-#endif
 
             // Declare a target object and property
             TargetInfo endPoint = null;
@@ -193,17 +197,46 @@ namespace XAMLMarkupExtensions.Base
             object targetProperty = service.TargetProperty;
             int targetPropertyIndex = -1;
             Type targetPropertyType = null;
+            object overriddenResult = null;
+
+            // If target object is a Binding and extension set at Value.
+            // Return Binding which work with BindingValueProvider.
+            if (targetObject is Setter setter && targetProperty is PropertyInfo spi && spi.Name == nameof(Setter.Value))
+            {
+                targetObject = new BindingValueProvider();
+                targetProperty = BindingValueProvider.ValueProperty;
+                // If Setter.TargetName is used then Setter.Property would be null.
+                // We cannot define which type used in this case.
+                targetPropertyType = setter.Property?.PropertyType ?? typeof(object);
+
+                overriddenResult = new Binding(nameof(BindingValueProvider.Value))
+                {
+                    Source = targetObject,
+                    Mode = BindingMode.TwoWay
+                };
+            }
+            // If target object is a Binding and extension set at Source.
+            // Reconfigure existing binding and return BindingValueProvider.
+            else if (targetObject is Binding binding && targetProperty is PropertyInfo bpi && bpi.Name == nameof(Binding.Source))
+            {
+                binding.Path = new PropertyPath(nameof(BindingValueProvider.Value));
+                binding.Mode = BindingMode.TwoWay;
+
+                targetObject = new BindingValueProvider();
+                targetProperty = BindingValueProvider.ValueProperty;
+                overriddenResult = targetObject;
+            }
 
             // First, check if the service provider is of type SimpleProvideValueServiceProvider
             //      -> If yes, get the target property type and index.
             // Check if the service.TargetProperty is a DependencyProperty or a PropertyInfo and set the type info
-            if (serviceProvider is SimpleProvideValueServiceProvider)
+            if (serviceProvider is SimpleProvideValueServiceProvider spvServiceProvider)
             {
-                targetPropertyType = ((SimpleProvideValueServiceProvider)serviceProvider).TargetPropertyType;
-                targetPropertyIndex = ((SimpleProvideValueServiceProvider)serviceProvider).TargetPropertyIndex;
-                endPoint = ((SimpleProvideValueServiceProvider)serviceProvider).EndPoint;
+                targetPropertyType = spvServiceProvider.TargetPropertyType;
+                targetPropertyIndex = spvServiceProvider.TargetPropertyIndex;
+                endPoint = spvServiceProvider.EndPoint;
             }
-            else
+            else if (targetPropertyType == null)
             {
                 if (targetProperty is PropertyInfo pi)
                 {
@@ -232,31 +265,22 @@ namespace XAMLMarkupExtensions.Base
                 return null;
 
             // Search for the target in the target object list
-            WeakReference wr = (from kvp in targetObjects
-                                where kvp.Key.Target == targetObject
-                                select kvp.Key).FirstOrDefault();
-
+            WeakReference wr = targetObjects.TryFindKey(targetObject);
             if (wr == null)
             {
                 // If it's the first object, call the appropriate action
                 if (targetObjects.Count == 0)
-                {
-                    if (OnFirstTarget != null)
-                        OnFirstTarget();
-                }
+                    OnFirstTargetAdded();
 
-                // Add the target as a WeakReference to the target object list
-                wr = new WeakReference(targetObject);
-                targetObjects.Add(wr, new Dictionary<Tuple<object, int>, Type>());
+                // Add to the target object list
+                wr = targetObjects.AddTargetObject(targetObject);
 
                 // Add this extension to the ObjectDependencyManager to ensure the lifetime along with the target object
                 ObjectDependencyManager.AddObjectDependency(wr, this);
             }
 
             // Finally, add the target prop and info to the list of this WeakReference
-            Tuple<object, int> tuple = new Tuple<object, int>(targetProperty, targetPropertyIndex);
-            if (!targetObjects[wr].ContainsKey(tuple))
-                targetObjects[wr].Add(tuple, targetPropertyType);
+            targetObjects.AddTargetObjectProperty(wr, targetProperty, targetPropertyType, targetPropertyIndex);
 
             // Sign up to the EndpointReachedEvent only if the markup extension wants to do so.
             EndpointReachedEvent.AddListener(rootObjectHashCode, this);
@@ -276,10 +300,13 @@ namespace XAMLMarkupExtensions.Base
             else
                 result = FormatOutput(endPoint, info);
 
+            if (overriddenResult != null)
+                return overriddenResult;
+
             // Check type
             if (typeof(IList).IsAssignableFrom(targetPropertyType))
                 return result;
-            else if ((result != null) && targetPropertyType.IsAssignableFrom(result.GetType()))
+            else if (result != null && targetPropertyType.IsInstanceOfType(result))
                 return result;
 
             // Finally, if nothing was there, return null or default
@@ -357,8 +384,8 @@ namespace XAMLMarkupExtensions.Base
                 value = Activator.CreateInstance(info.TargetPropertyType);
 
             // Set the value.
-            if (info.TargetProperty is DependencyProperty)
-                ((DependencyObject)info.TargetObject).SetValueSync((DependencyProperty)info.TargetProperty, value);
+            if (info.TargetProperty is DependencyProperty dp)
+                ((DependencyObject)info.TargetObject).SetValueSync(dp, value);
             else
             {
                 PropertyInfo pi = (PropertyInfo)info.TargetProperty;
@@ -418,43 +445,29 @@ namespace XAMLMarkupExtensions.Base
         /// <param name="value">The value supplied by the set accessor of the property.</param>
         /// <param name="property">The property information.</param>
         /// <param name="index">The index of the indexed property, if applicable.</param>
-        /// <returns>The value or default.</returns>
-        protected T GetValue<T>(object value, PropertyInfo property, int index)
-        {
-            return GetValue<T>(value, property, index, null);
-        }
-
-        /// <summary>
-        /// Safely get the value of a property that might be set by a further MarkupExtension.
-        /// </summary>
-        /// <typeparam name="T">The return type.</typeparam>
-        /// <param name="value">The value supplied by the set accessor of the property.</param>
-        /// <param name="property">The property information.</param>
-        /// <param name="index">The index of the indexed property, if applicable.</param>
         /// <param name="endPoint">An optional endpoint information.</param>
+        /// <param name="service">An optional serviceProvider information.</param>
         /// <returns>The value or default.</returns>
-        protected T GetValue<T>(object value, PropertyInfo property, int index, TargetInfo endPoint)
+        protected T GetValue<T>(object value, PropertyInfo property, int index, TargetInfo endPoint = null, IServiceProvider service= null)
         {
             // Simple case: value is of same type
-            if (value is T)
-                return (T)value;
+            if (value is T t && !(value is MarkupExtension))
+                return t;
 
             // No property supplied
             if (property == null)
-                return default(T);
+                return default;
 
             // Is value of type MarkupExtension?
-            if (value is MarkupExtension)
+            if (value is MarkupExtension me)
             {
-                object result = ((MarkupExtension)value).ProvideValue(new SimpleProvideValueServiceProvider(this, property, property.PropertyType, index, endPoint));
+                object result = me.ProvideValue(new SimpleProvideValueServiceProvider(this, property, property.PropertyType, index, endPoint, service));
                 if (result != null)
                     return (T)result;
-                else
-                    return default(T);
             }
 
             // Default return path.
-            return default(T);
+            return default;
         }
 
         /// <summary>
@@ -472,7 +485,30 @@ namespace XAMLMarkupExtensions.Base
         /// <returns>The path to the endpoint.</returns>
         protected TargetPath GetPathToEndpoint(TargetInfo endpoint)
         {
-            return (from p in GetTargetPropertyPaths() where p.EndPoint.Equals(endpoint) select p).FirstOrDefault();
+            // If endpoint is connected - return empty path.
+            if (IsConnected(endpoint))
+                return new TargetPath(endpoint);
+
+            // Else try find endpoint in nested targets.
+            foreach (var nestedTargetInfo in targetObjects.GetNestedTargetInfos())
+            {
+                // If nested target inherit NestedMarkupExtension - we can fast get path of endpoint using current method.
+                // Otherwise use slow search by getting all paths.
+                var interfaceInheritor = (INestedMarkupExtension) nestedTargetInfo.TargetObject;
+                var path = nestedTargetInfo.TargetObject is NestedMarkupExtension classInheritor
+                    ? classInheritor.GetPathToEndpoint(endpoint)
+                    : interfaceInheritor.GetTargetPropertyPaths().FirstOrDefault(pp => pp.EndPoint.TargetObject == endpoint.TargetObject);
+                if (path != null)
+                {
+                    targetObjects.ClearDeadReferences();
+
+                    path.AddStep(nestedTargetInfo);
+                    return path;
+                }
+            }
+
+            targetObjects.ClearDeadReferences();
+            return null;
         }
 
         /// <summary>
@@ -482,7 +518,28 @@ namespace XAMLMarkupExtensions.Base
         /// <returns>True, if the extension nesting tree reaches the given object.</returns>
         protected bool IsEndpointObject(object obj)
         {
-            return (from p in GetTargetPropertyPaths() where p.EndPoint.TargetObject == obj select p).Count() > 0;
+            // Check if object contains in current targets.
+            if (targetObjects.TryFindKey(obj) != null)
+                return true;
+
+            // Else try find object in nested targets.
+            foreach (var nestedTargetInfo in targetObjects.GetNestedTargetInfos())
+            {
+                // If nested target inherit NestedMarkupExtension - we can fast get path of endpoint using current method.
+                // Otherwise use slow search by getting all paths.
+                var interfaceInheritor = (INestedMarkupExtension) nestedTargetInfo.TargetObject;
+                var isEndpoint = nestedTargetInfo.TargetObject is NestedMarkupExtension classInheritor
+                    ? classInheritor.IsEndpointObject(obj)
+                    : interfaceInheritor.GetTargetPropertyPaths().Any(tpp => tpp.EndPoint.TargetObject == obj);
+                if (isEndpoint)
+                {
+                    targetObjects.ClearDeadReferences();
+                    return true;
+                }
+            }
+
+            targetObjects.ClearDeadReferences();
+            return false;
         }
 
         /// <summary>
@@ -495,12 +552,11 @@ namespace XAMLMarkupExtensions.Base
             if (args.Handled)
                 return;
 
-            var path = GetPathToEndpoint(args.Endpoint);
-
-            if (path == null)
+            if ((this != sender) && !UpdateOnEndpoint(args.Endpoint))
                 return;
 
-            if ((this != sender) && !UpdateOnEndpoint(path.EndPoint))
+            var path = GetPathToEndpoint(args.Endpoint);
+            if (path == null)
                 return;
 
             args.EndpointValue = UpdateNewValue(path);
@@ -514,9 +570,49 @@ namespace XAMLMarkupExtensions.Base
         /// </summary>
         public void Dispose()
         {
-            EndpointReachedEvent.RemoveListener(rootObjectHashCode, this);
-            targetObjects.Clear();
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
+
+        /// <summary>
+        /// Dispose resources.
+        /// </summary>
+        /// <param name="isDisposing">
+        /// <see langword="true" /> if calls from Dispose() method.
+        /// <see langword="false" /> if calls from finalizer.
+        /// </param>
+        protected virtual void Dispose(bool isDisposing)
+        {
+            if (isDisposing)
+            {
+                // Remove strong reference from ObjectDependencyManager.
+                ObjectDependencyManager.CleanUp(this);
+
+                // Clean all targets.
+                targetObjects.Clear();
+                OnLastTargetRemoved();
+            }
+        }
+
+        #region IObjectDependency
+
+        /// <inheritdoc />
+        void IObjectDependency.OnDependenciesRemoved(IEnumerable<WeakReference> deadDependencies)
+        {
+            targetObjects.ClearReferences(deadDependencies);
+            
+            if (targetObjects.Count == 0)
+                OnLastTargetRemoved();
+        }
+
+        /// <inheritdoc />
+        void IObjectDependency.OnAllDependenciesRemoved()
+        {
+            targetObjects.Clear();
+            OnLastTargetRemoved();
+        }
+
+        #endregion
 
         #region EndpointReachedEvent
         /// <summary>
@@ -603,11 +699,9 @@ namespace XAMLMarkupExtensions.Base
                 }
             }
 
-#if !NET35
             /// <summary>
             /// Clears the listeners list for the given root object hash code <paramref name="rootObjectHashCode"/>.
             /// </summary>
-            /// <param name="rootObjectHashCode"></param>
             internal static void ClearListenersForRootObject(int rootObjectHashCode)
             {
                 lock (listenersLock)
@@ -615,7 +709,6 @@ namespace XAMLMarkupExtensions.Base
                     if (!listeners.ContainsKey(rootObjectHashCode))
                         return;
 
-                    listeners[rootObjectHashCode].Clear();
                     listeners.Remove(rootObjectHashCode);
                 }
             }
@@ -629,7 +722,6 @@ namespace XAMLMarkupExtensions.Base
             {
                 return listeners.ContainsKey(rootObjectHashCode);
             }
-#endif
 
             /// <summary>
             /// Removes a listener from the inner list of listeners.

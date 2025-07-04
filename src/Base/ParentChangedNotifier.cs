@@ -1,7 +1,7 @@
 ﻿#region Copyright information
 // <copyright file="ParentChangedNotifier.cs">
 //     Licensed under Microsoft Public License (Ms-PL)
-//     http://xamlmarkupextensions.codeplex.com/license
+//     https://github.com/XAMLMarkupExtensions/XAMLMarkupExtensions/blob/master/LICENSE
 // </copyright>
 // <author>Uwe Mayer</author>
 #endregion
@@ -56,18 +56,17 @@ namespace XAMLMarkupExtensions.Base
         /// <param name="args">The argument.</param>
         private static void ParentChanged(DependencyObject obj, DependencyPropertyChangedEventArgs args)
         {
-            var notifier = obj as FrameworkElement;
-            if (notifier == null)
-                return;
-
-            var weakNotifier = OnParentChangedList.Keys.SingleOrDefault(x => x.IsAlive && ReferenceEquals(x.Target, notifier));
-
-            if (weakNotifier != null)
+            if (obj is FrameworkElement notifier)
             {
-                var list = new List<Action>(OnParentChangedList[weakNotifier]);
-                foreach (var OnParentChanged in list)
-                    OnParentChanged();
-                list.Clear();
+                var weakNotifier = OnParentChangedList.Keys.SingleOrDefault(x => x.IsAlive && ReferenceEquals(x.Target, notifier));
+
+                if (weakNotifier != null)
+                {
+                    var list = new List<Action>(OnParentChangedList[weakNotifier]);
+                    foreach (var OnParentChanged in list)
+                        OnParentChanged();
+                    list.Clear();
+                }
             }
         }
         #endregion
@@ -123,15 +122,12 @@ namespace XAMLMarkupExtensions.Base
                 element.Dispatcher.Invoke(new Action(SetBinding));
         }
 
-        private void SetBinding()
+        /// <summary>
+        /// Finalizer.
+        /// </summary>
+        ~ParentChangedNotifier()
         {
-            var binding = new Binding("Parent")
-            {
-                RelativeSource = new RelativeSource()
-            };
-            binding.RelativeSource.Mode = RelativeSourceMode.FindAncestor;
-            binding.RelativeSource.AncestorType = typeof(FrameworkElement);
-            BindingOperations.SetBinding((FrameworkElement)element.Target, ParentProperty, binding);
+            Dispose(false);
         }
 
         /// <summary>
@@ -139,27 +135,56 @@ namespace XAMLMarkupExtensions.Base
         /// </summary>
         public void Dispose()
         {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Dispose resources.
+        /// </summary>
+        /// <param name="isDisposing">
+        /// <see langword="true" /> if calls from Dispose() method.
+        /// <see langword="false" /> if calls from finalizer.
+        /// </param>
+        protected virtual void Dispose(bool isDisposing)
+        {
             var weakElement = element;
             var weakElementReference = weakElement.Target;
 
-            if (weakElementReference == null || !weakElement.IsAlive)
-                return;
-
-            try
+            if (OnParentChangedList.ContainsKey(weakElement))
             {
-                ((FrameworkElement)weakElementReference).ClearValue(ParentProperty);
+                var list = OnParentChangedList[weakElement];
+                list.Clear();
+                OnParentChangedList.Remove(weakElement);
+            }
 
-                if (OnParentChangedList.ContainsKey(weakElement))
+            if (isDisposing)
+            {
+                if (weakElementReference == null || !weakElement.IsAlive)
+                    return;
+
+                try
                 {
-                    var list = OnParentChangedList[weakElement];
-                    list.Clear();
-                    OnParentChangedList.Remove(weakElement);
+                    ((FrameworkElement)weakElementReference).ClearValue(ParentProperty);
+                }
+                finally
+                {
+                    element = null;
                 }
             }
-            finally
+        }
+
+        private void SetBinding()
+        {
+            var binding = new Binding("Parent")
             {
-                element = null;
-            }
+                RelativeSource = new RelativeSource()
+                { 
+                    Mode = RelativeSourceMode.FindAncestor,
+                    AncestorType = typeof(FrameworkElement)
+                }
+            };
+            BindingOperations.SetBinding((FrameworkElement)element.Target, ParentProperty, binding);
         }
     }
 }
