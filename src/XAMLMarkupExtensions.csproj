@@ -15,7 +15,7 @@
 		<RepositoryUrl>https://github.com/ezhassen/XAMLMarkupExtensions</RepositoryUrl>
 		<PackageLicenseExpression>MS-PL</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/ezhassen/XAMLMarkupExtensions</PackageProjectUrl>
-		<PackageLicenseFile>LICENSE</PackageLicenseFile>
+		<!--<PackageLicenseFile>LICENSE</PackageLicenseFile>-->
 		<Copyright>Uwe Mayer, Konrad Mattheis, Bernhard Millauer</Copyright>
 		<Description>A base class for nested markup extensions and a collection of useful extensions for WPF 3.5 and 4.x. (This is a fork to support .net core 3.1 to net9.0)</Description>
 		<PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
