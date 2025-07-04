@@ -45,17 +45,17 @@
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 	</PropertyGroup>
 
-	<PropertyGroup Condition="Exists('$(SolutionDir)\src\fullkey.snk')">
+	<!--<PropertyGroup Condition="Exists('$(SolutionDir)\src\fullkey.snk')">
 		<PublicSign>false</PublicSign>
 		<AssemblyOriginatorKeyFile>fullkey.snk</AssemblyOriginatorKeyFile>
-	</PropertyGroup>
+	</PropertyGroup>-->
 
-	<PropertyGroup Condition="'$(UnSigned)' == 'true'">
+	<!--<PropertyGroup Condition="'$(UnSigned)' == 'true'">
 		<SignAssembly>false</SignAssembly>
 		<PublicSign>false</PublicSign>
 		<AssemblyOriginatorKeyFile></AssemblyOriginatorKeyFile>
 		<PackageId>$(AssemblyName).UnSigned</PackageId>
-	</PropertyGroup>
+	</PropertyGroup>-->
 
 	<ItemGroup>
 		<None Include="..\LICENSE" Pack="true" PackagePath="" />
