@@ -1,31 +1,27 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<TargetFrameworks>net40;net452;net462;net472;net48;netcoreapp3.1</TargetFrameworks>
+		<TargetFrameworks>net40;net452;net462;net472;net48;netcoreapp3.1;net6.0-windows;net8.0-windows;net9.0-windows;</TargetFrameworks>
 		<UseWPF>True</UseWPF>
-		<AutoGenerateBindingRedirects Condition="!$(TargetFramework.StartsWith('netcore'))">true</AutoGenerateBindingRedirects>
+		<AutoGenerateBindingRedirects Condition="$(TargetFramework.StartsWith('net4'))">true</AutoGenerateBindingRedirects>
 		<AssemblyTitle>XAMLMarkupExtensions</AssemblyTitle>
 		<AssemblyName>XAMLMarkupExtensions</AssemblyName>
 		<RootNamespace>XAMLMarkupExtensions</RootNamespace>
-    <PackageId>XAMLMarkupExtensionsEzzFork</PackageId>
+		<PackageId>XAMLMarkupExtensionsEzzFork</PackageId>
 
-    <Version>$(GitVersion_NuGetVersion)</Version>
-    <Company>ezhassen</Company>
+		<Version>$(GitVersion_NuGetVersion)</Version>
+		<Company>ezhassen</Company>
 		<Product>XAML Markup Extensions</Product>
 		<Authors>Uwe Mayer,Konrad Mattheis,Bernhard Millauer</Authors>
 		<RepositoryUrl>https://github.com/ezhassen/XAMLMarkupExtensions</RepositoryUrl>
-    <PackageLicenseExpression>MS-PL</PackageLicenseExpression>
+		<PackageLicenseExpression>MS-PL</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/ezhassen/XAMLMarkupExtensions</PackageProjectUrl>
-		<RepositoryUrl>https://github.com/XAMLMarkupExtensions/XAMLMarkupExtensions.git</RepositoryUrl>
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
-		<PackageProjectUrl>https://github.com/XAMLMarkupExtensions/XAMLMarkupExtensions</PackageProjectUrl>
 		<Copyright>Uwe Mayer, Konrad Mattheis, Bernhard Millauer</Copyright>
-		<Description>A base class for nested markup extensions and a collection of useful extensions for WPF 3.5 and 4.x. (This is a fork to support .net core 3.1)</Description>
-		<Description>A base class for nested markup extensions and a collection of useful extensions for WPF 3.5, 4.x. and NetCore 3.x</Description>
-		<PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+		<Description>A base class for nested markup extensions and a collection of useful extensions for WPF 3.5 and 4.x. (This is a fork to support .net core 3.1 to net9.0)</Description>
+		<PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
 		<PackageReleaseNotes></PackageReleaseNotes>
 		<NeutralLanguage>en-US</NeutralLanguage>
-		<PackageTags>WPF markup extension nesting netcore</PackageTags>
-		<PackageTags>WPF markup extension nesting</PackageTags>
+		<PackageTags>WPF markup extension nesting netcore net</PackageTags>
 		<NoWarn>NU5105</NoWarn>
 
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -69,21 +65,24 @@
 
 	<!--PackageReference for all framworks-->
 	<ItemGroup>
-		<PackageReference Include="GitVersion.MsBuild" Version="5.12.0" PrivateAssets="All" />
+		<!--GitVersion.MsBuild version 6.0.2 there issues whith some projects (To show in updates again just remove [])-->
+		<PackageReference Include="GitVersion.MsBuild" Version="[5.12.0]" PrivateAssets="All" />
 		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
 	</ItemGroup>
 
-	<!--<Target Name="PublishToNugetWithAPIKey" AfterTargets="GenerateNuspec" Condition="Exists('$(SolutionDir)\..\..\githubPackagesToken.txt')">
-		<ReadLinesFromFile File="$(SolutionDir)\..\..\githubPackagesToken.txt">
-			<Output TaskParameter="Lines" PropertyName="githubPackagesToken" />
 	<Target Name="PublishToNugetWithAPIKey" AfterTargets="GenerateNuspec">
-		<ReadLinesFromFile Condition="Exists('$(SolutionDir)\..\..\nugetapikey.txt')" File="$(SolutionDir)\..\..\nugetapikey.txt">
+		<!--Nuget-->
+		<ReadLinesFromFile Condition="Exists('$(SolutionDir)\..\..\ezznugetapikey.txt')" File="$(SolutionDir)\..\..\ezznugetapikey.txt">
 			<Output TaskParameter="Lines" PropertyName="NugetAPIKey" />
 		</ReadLinesFromFile>
-		<Exec WorkingDirectory="$(BaseDir)" Command="dotnet nuget push $(PackageOutputAbsolutePath)$(PackageId).$(PackageVersion).nupkg -k $(githubPackagesToken) -s https://nuget.pkg.github.com/ezhassen" />
-	</Target>-->
-		<!-- <Exec Condition="('$(NugetAPIKey)' != '')" WorkingDirectory="$(BaseDir)" Command="dotnet nuget push $(PackageOutputAbsolutePath)$(PackageId).$(PackageVersion).nupkg -k $(NugetAPIKey) -s https://api.nuget.org/v3/index.json" /> -->
-	<!-- </Target> -->
+		<Exec Condition="('$(NugetAPIKey)' != '')" WorkingDirectory="$(BaseDir)" Command="dotnet nuget push $(PackageOutputAbsolutePath)$(PackageId).$(PackageVersion).nupkg -k $(NugetAPIKey) -s https://api.nuget.org/v3/index.json" />
+		<!--Github-->
+		<ReadLinesFromFile Condition="Exists('$(SolutionDir)\..\..\githubPackagesToken.txt')" File="$(SolutionDir)\..\..\githubPackagesToken.txt">
+			<Output TaskParameter="Lines" PropertyName="GithubAPIKey" />
+		</ReadLinesFromFile>
+		<Exec Condition="('$(GithubAPIKey)' != '')" WorkingDirectory="$(BaseDir)" Command="dotnet nuget push $(PackageOutputAbsolutePath)$(PackageId).$(PackageVersion).nupkg -k $(GithubAPIKey) -s https://api.nuget.org/v3/index.json" />
+
+	</Target>
 
 	<Target Name="FixOnGitVersionTaskError" BeforeTargets="GetAssemblyVersion">
 		<CreateProperty Value="0.0.1-notgitversion" Condition="'$(GitVersion_NuGetVersion)' == ''">
